@@ -1,0 +1,65 @@
+{
+	"name": "pi-context-tax",
+	"version": "0.1.0",
+	"packageManager": "pnpm@11.24.0",
+	"description": "See Pi's startup tax and current context usage, with a breakdown of tools, instructions, and conversation",
+	"type": "module",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/Roshvan/pi-context-tax.git"
+	},
+	"bugs": {
+		"url": "https://github.com/Roshvan/pi-context-tax/issues"
+	},
+	"homepage": "https://github.com/Roshvan/pi-context-tax#readme",
+	"publishConfig": {
+		"access": "public",
+		"registry": "https://registry.npmjs.org"
+	},
+	"keywords": [
+		"pi-package",
+		"pi-extension",
+		"pi",
+		"coding-agent",
+		"context-window",
+		"startup-tax",
+		"tokens",
+		"tui"
+	],
+	"files": [
+		"extensions",
+		"src",
+		"docs/*.png",
+		"docs/RELEASING.md",
+		"README.md",
+		"LICENSE"
+	],
+	"scripts": {
+		"check": "tsc --noEmit && oxlint",
+		"dev": "pi -e ./extensions/context-tax.ts",
+		"lint": "oxlint",
+		"pack:check": "pnpm pack --dry-run",
+		"prepublishOnly": "pnpm check && pnpm pack:check"
+	},
+	"pi": {
+		"extensions": [
+			"./extensions/context-tax.ts"
+		]
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-coding-agent": "^0.84.3 || ^0.85.0",
+		"@earendil-works/pi-tui": "^0.84.3 || ^0.85.0"
+	},
+	"devDependencies": {
+		"@earendil-works/pi-coding-agent": "0.84.3",
+		"@earendil-works/pi-tui": "0.84.3",
+		"@oxlint/plugins": "^1.80.0",
+		"@types/node": "^22.20.1",
+		"oxlint": "^1.80.0",
+		"typescript": "7.0.2"
+	},
+	"engines": {
+		"node": ">=22.19.0"
+	}
+}

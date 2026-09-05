@@ -1,0 +1,8 @@
+{
+	"health": {
+		"maxCrap": 506,
+		"maxCyclomatic": 22,
+		"maxCognitive": 35,
+		"maxUnitSize": 120
+	}
+}
