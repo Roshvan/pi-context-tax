@@ -31,7 +31,6 @@
 		"extensions",
 		"src",
 		"docs/*.png",
-		"docs/RELEASING.md",
 		"README.md",
 		"LICENSE"
 	],

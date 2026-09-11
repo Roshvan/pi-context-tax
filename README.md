@@ -82,7 +82,7 @@ pnpm install
 pnpm dev
 ```
 
-Before submitting a change, run `pnpm check` and `pnpm pack:check`. Maintainer instructions are in [Releasing](docs/RELEASING.md).
+Before submitting a change, run `pnpm check` and `pnpm pack:check`.
 
 ## Issues and contributions
 
