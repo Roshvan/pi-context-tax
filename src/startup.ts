@@ -28,9 +28,9 @@ function extensionLabel(path: string): string | undefined {
 	return name.length > 0 ? name : undefined;
 }
 
-export function toolProvider(name: string, source?: string, path?: string, builtinOverride?: BuiltinToolOverride): string {
-	const mcp = MCP_TOOL.exec(name);
-	if (mcp) return `mcp · ${mcp[1]}`;
+export function toolProvider(name: string, source?: string, path?: string, builtinOverride?: BuiltinToolOverride, namespace?: string): string {
+	const server = namespace?.startsWith("mcp__") ? namespace.slice(5) : MCP_TOOL.exec(name)?.[1];
+	if (server) return `mcp · ${server}`;
 	const npmPackage = /^npm:((?:@[^/]+\/)?[^@/]+)/.exec(source ?? "")?.[1];
 	const label = npmPackage ?? (path === undefined ? undefined : extensionLabel(path));
 	if (builtinOverride !== undefined) {

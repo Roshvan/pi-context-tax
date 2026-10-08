@@ -1,17 +1,8 @@
 import {
 	calculateContextTokens,
 	convertToLlm,
-	createBashToolDefinition,
-	createEditToolDefinition,
-	createFindToolDefinition,
-	createGrepToolDefinition,
-	createLsToolDefinition,
-	createPowerShellToolDefinition,
-	createReadToolDefinition,
-	createWriteToolDefinition,
 	estimateTokens,
 	type BuildSystemPromptOptions,
-	type ToolInfo,
 } from "@earendil-works/pi-coding-agent";
 
 import type { CapturedMessages } from "./capture.ts";
@@ -19,7 +10,8 @@ import type { ResourceInventory, SessionTotals } from "./resources.ts";
 import { toolProvider } from "./startup.ts";
 import { attributeSystemPrompt } from "./system-prompt.ts";
 import { contentText, distribute, estimateText, oneLine } from "./tokens.ts";
-import { isStartupKind, type BuiltinToolOverride, type ChunkKind, type ContextChunk, type ContextSnapshot, type SnapshotSource, type ToolCallDetails, type ToolDefinitionDetails, type UsageSource } from "./types.ts";
+import { toolSchemaText, type ToolSummary } from "./tool-loadout.ts";
+import { isStartupKind, type ChunkKind, type ContextChunk, type ContextSnapshot, type SnapshotSource, type ToolCallDetails, type ToolDefinitionDetails, type UsageSource } from "./types.ts";
 
 const KIND_LABEL = {
 	system: "system",
@@ -46,48 +38,6 @@ export function categoryLabel(kind: ChunkKind): string {
 	if (kind === "system") return CATEGORY_LABEL.system;
 	if (kind === "injection") return CATEGORY_LABEL.injection;
 	return KIND_LABEL[kind].replace(/^./, (letter) => letter.toUpperCase());
-}
-
-export interface ToolSummary {
-	name: string;
-	description: string;
-	parameters: unknown;
-	source?: string;
-	path?: string;
-	builtinOverride?: BuiltinToolOverride;
-}
-
-export function toolSchemaText(tool: ToolSummary): string {
-	return `${tool.name}\n${tool.description}\n${JSON.stringify(tool.parameters ?? {})}`;
-}
-
-const BUILTIN_FACTORIES = new Map<string, (cwd: string) => ToolSummary>([
-	["read", createReadToolDefinition],
-	["bash", createBashToolDefinition],
-	["edit", createEditToolDefinition],
-	["write", createWriteToolDefinition],
-	["grep", createGrepToolDefinition],
-	["find", createFindToolDefinition],
-	["ls", createLsToolDefinition],
-	["powershell", createPowerShellToolDefinition],
-]);
-
-export function summarizeActiveTools(tools: readonly ToolInfo[], activeNames: readonly string[], cwd: string): ToolSummary[] {
-	const active = new Set(activeNames);
-	const definitions = new Map(tools.filter((tool) => active.has(tool.name)).map((tool) => [tool.name, tool]));
-	return [...definitions.values()].map((tool) => {
-		const builtin = tool.sourceInfo?.source === "builtin" ? undefined : BUILTIN_FACTORIES.get(tool.name)?.(cwd);
-		const builtinOverride = builtin === undefined ? undefined
-			: toolSchemaText(tool) === toolSchemaText(builtin) ? "same-definition" : "modified-definition";
-		return {
-			name: tool.name,
-			description: tool.description,
-			parameters: tool.parameters,
-			source: tool.sourceInfo?.source,
-			path: tool.sourceInfo?.path,
-			builtinOverride,
-		};
-	});
 }
 
 export interface SnapshotInputs {
@@ -161,6 +111,7 @@ function userChunkMeta(original: CapturedMessages[number]): UserChunkMeta {
 
 function addMessageChunks(messages: CapturedMessages, add: AddChunk): void {
 	for (const original of messages) {
+		if (original.role === "system") continue;
 		const message = convertToLlm([original])[0];
 		if (!message) continue;
 		const messageTokens = estimateTokens(message);
@@ -277,7 +228,7 @@ export function buildSnapshot(inputs: SnapshotInputs): ContextSnapshot {
 	addSystemChunks(inputs.systemPrompt, inputs.systemPromptOptions, inputs.baselineSystemPrompt, add);
 	for (const tool of inputs.tools) {
 		add("schema", `tool definition · ${tool.name}`, toolSchemaText(tool), {
-			group: toolProvider(tool.name, tool.source, tool.path, tool.builtinOverride),
+			group: toolProvider(tool.name, tool.source, tool.path, tool.builtinOverride, tool.namespace),
 			toolName: tool.name,
 			toolDefinition: {
 				description: tool.description,

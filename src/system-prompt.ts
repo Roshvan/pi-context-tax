@@ -85,15 +85,15 @@ const SKILL_OPEN = "  <skill>";
 const SKILL_CLOSE = "  </skill>";
 
 function claimSkills(prompt: string, options: BuildSystemPromptOptions, claims: Claim[]): void {
-	if (options.selectedTools !== undefined && !options.selectedTools.includes("read")) return;
 	const skills = (options.skills ?? []).filter((skill) => !skill.disableModelInvocation);
 	if (skills.length === 0) return;
-	let section: string;
-	try {
-		section = formatSkillsForPrompt(skills);
-	} catch {
-		return;
-	}
+	const selected = options.selectedTools ?? ["read", "bash", "edit", "write"];
+	const hidden = new Set(options.hiddenTools ?? []);
+	const readers = ["read", "bash"] as const;
+	const reader = readers.find((tool) => selected.includes(tool) && !hidden.has(tool))
+		?? (readers.some((tool) => selected.includes(tool)) ? "indirect" : undefined);
+	if (reader === undefined) return;
+	const section = formatSkillsForPrompt(skills, reader).trim();
 	if (section.length === 0) return;
 	const span = findFreeSpan(prompt, section, claims);
 	if (!span) {
@@ -116,6 +116,10 @@ function claimSkills(prompt: string, options: BuildSystemPromptOptions, claims: 
 		claims.push({ start: span.start, end: span.end, label: `skill index · ${skills.length} skills` });
 		return;
 	}
+	const first = entries[0];
+	const last = entries[entries.length - 1];
+	if (first !== undefined && first.start > 0) claims.push({ start: span.start, end: span.start + first.start, label: "prompt scaffolding · skill catalog" });
+	if (last !== undefined && last.end < section.length) claims.push({ start: span.start + last.end, end: span.end, label: "prompt scaffolding · skill catalog" });
 	for (let index = 0; index < entries.length; index++) {
 		const entry = entries[index];
 		const skill = skills[index];

@@ -1,7 +1,8 @@
-import type { BuildSystemPromptOptions, ContextEvent } from "@earendil-works/pi-coding-agent";
+import type { BuildSystemPromptOptions, ContextWithSystemEvent } from "@earendil-works/pi-coding-agent";
+import type { ToolSummary } from "./tool-loadout.ts";
 import type { SnapshotSource } from "./types.ts";
 
-export type CapturedMessages = ContextEvent["messages"];
+export type CapturedMessages = ContextWithSystemEvent["messages"];
 
 interface Capture {
 	systemPrompt: string;
@@ -9,7 +10,8 @@ interface Capture {
 	systemPromptOptions: BuildSystemPromptOptions | undefined;
 	messages: CapturedMessages;
 	sessionMessages: CapturedMessages;
-	startupKey: string | undefined;
+	startupKey: string;
+	tools: ToolSummary[];
 	capturedAt: Date;
 }
 
@@ -25,23 +27,25 @@ export class CaptureState {
 	private pendingBaseline: string | undefined;
 
 	noteAgentStart(options: BuildSystemPromptOptions | undefined, systemPrompt?: string): void {
-		this.pendingOptions = options === undefined ? undefined : structuredClone(options);
+		this.pendingOptions = options;
 		this.pendingBaseline = systemPrompt;
 	}
 
 	noteContext(
 		messages: CapturedMessages,
 		systemPrompt: string,
-		sessionMessages: CapturedMessages = messages,
-		startupKey?: string,
+		sessionMessages: CapturedMessages,
+		startupKey: string,
+		tools: ToolSummary[],
 	): void {
 		this.latest = {
 			systemPrompt,
 			baselinePrompt: this.pendingBaseline,
-			systemPromptOptions: this.pendingOptions,
+			systemPromptOptions: this.pendingOptions === undefined ? undefined : structuredClone(this.pendingOptions),
 			messages: structuredClone(messages),
 			sessionMessages: structuredClone(sessionMessages),
 			startupKey,
+			tools: structuredClone(tools),
 			capturedAt: new Date(),
 		};
 	}
@@ -65,6 +69,10 @@ export class CaptureState {
 		this.latest = undefined;
 		this.pendingOptions = undefined;
 		this.pendingBaseline = undefined;
+	}
+
+	get systemPromptOptions(): BuildSystemPromptOptions | undefined {
+		return this.pendingOptions;
 	}
 
 	get current(): Capture | undefined {

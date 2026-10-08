@@ -7,9 +7,11 @@ import {
 import os from "node:os";
 import path from "node:path";
 
+import { summarizeUsage } from "./session-summary.ts";
+
 export const SKILL_LOADED_ENTRY = "context-tax:skill-loaded";
 
-export const STARTUP_USAGE_ENTRY = "context-tax:startup-usage:v1";
+export const STARTUP_USAGE_ENTRY = "context-tax:startup-usage:v2";
 
 export interface StartupUsageData {
 	readonly key: string;
@@ -65,34 +67,12 @@ export interface ResourceInventory {
 	readonly availableSkillCount: number;
 	readonly loadedSkills: readonly string[];
 	readonly commandExtensions: readonly string[];
-	readonly activeTools: number;
-}
-
-interface UsageReading {
-	readonly input: number;
-	readonly output: number;
-	readonly cacheRead: number;
-	readonly cacheWrite: number;
-	readonly cost: { readonly total: number };
-}
-
-function addUsage(total: { tokens: number; cost: number }, usage: UsageReading | undefined): void {
-	if (usage === undefined) return;
-	total.tokens += usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
-	total.cost += usage.cost.total;
+	readonly declaredTools: number;
 }
 
 export function readSessionTotals(entries: readonly SessionEntry[]): SessionTotals {
-	const total = { tokens: 0, cost: 0 };
-	for (const entry of entries) {
-		if (entry.type === "message") {
-			const message = entry.message;
-			if ("usage" in message) addUsage(total, message.usage);
-			continue;
-		}
-		if (entry.type === "compaction" || entry.type === "branch_summary") addUsage(total, entry.usage);
-	}
-	return total;
+	const { usage } = summarizeUsage(entries);
+	return { tokens: usage.total, cost: usage.cost };
 }
 
 export function readLoadedSkills(entries: readonly SessionEntry[]): ReadonlySet<string> {
@@ -174,7 +154,7 @@ function extensionFileLabel(filePath: string): string {
 function extensionLabels(commands: readonly SlashCommandInfo[]): string[] {
 	const sources = new Map<string, string>();
 	for (const command of commands) {
-		if (command.source !== "extension") continue;
+		if (command.source !== "extension" || command.sourceInfo.source === "builtin") continue;
 		sources.set(command.sourceInfo.path, extensionFileLabel(command.sourceInfo.path));
 	}
 	return [...sources.values()].sort((left, right) => left.localeCompare(right));
@@ -184,7 +164,7 @@ export function readResourceInventory(
 	options: BuildSystemPromptOptions,
 	commands: readonly SlashCommandInfo[],
 	loadedSkills: ReadonlySet<string>,
-	activeTools: number,
+	declaredTools: number,
 	cwd: string,
 ): ResourceInventory {
 	return {
@@ -192,6 +172,6 @@ export function readResourceInventory(
 		availableSkillCount: options.skills?.length ?? 0,
 		loadedSkills: [...loadedSkills].sort((left, right) => left.localeCompare(right)),
 		commandExtensions: extensionLabels(commands),
-		activeTools,
+		declaredTools,
 	};
 }

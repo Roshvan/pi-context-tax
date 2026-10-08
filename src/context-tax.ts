@@ -1,17 +1,25 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
-import { Key, matchesKey, truncateToWidth, visibleWidth, type Component } from "@earendil-works/pi-tui";
+import { Key, KeybindingsManager, TUI_KEYBINDINGS, matchesKey, truncateToWidth, visibleWidth, type Component, type Keybinding } from "@earendil-works/pi-tui";
 
 import { readLedger, rowChildren, type Ledger, type LedgerRow } from "./ledger.ts";
 import { renderLedgerRow, renderOverview, valueLine, windowShare } from "./panel.ts";
 import { sessionDocument, sourceDocument } from "./source-document.ts";
 import { createSourceReader } from "./source-reader.ts";
+import { createSessionView } from "./session-view.ts";
+import type { SessionSummary, SummaryScope } from "./session-summary.ts";
 import { formatTokens } from "./tokens.ts";
 import type { ContextSnapshot } from "./types.ts";
 
 interface ContextTaxCallbacks {
 	onClose: () => void;
 	onRefresh: () => ContextSnapshot;
+	onSummary: (scope: SummaryScope) => SessionSummary;
 	onChange: () => void;
+}
+
+interface ContextTaxInitial {
+	readonly tab: "context" | "session";
+	readonly scope: SummaryScope;
 }
 
 interface VisibleRow {
@@ -29,8 +37,10 @@ export function createContextTax(
 	theme: Theme,
 	terminalRows: () => number,
 	callbacks: ContextTaxCallbacks,
+	initial: ContextTaxInitial = { tab: "context", scope: "session" },
+	keybindings: KeybindingsManager = new KeybindingsManager(TUI_KEYBINDINGS),
 ): ContextTax {
-	return new ContextTax(snapshot, theme, terminalRows, callbacks);
+	return new ContextTax(snapshot, theme, terminalRows, callbacks, initial, keybindings);
 }
 
 class ContextTax implements Component {
@@ -40,15 +50,29 @@ class ContextTax implements Component {
 	private cached: Ledger | undefined;
 	private children = new Map<string, LedgerRow[]>();
 	private view: View = { kind: "context" };
+	private tab: "context" | "session";
+	private scope: SummaryScope;
+	private session: ReturnType<typeof createSessionView> | undefined;
 
 	constructor(
 		private snapshot: ContextSnapshot,
 		private readonly theme: Theme,
 		private readonly terminalRows: () => number,
 		private readonly callbacks: ContextTaxCallbacks,
-	) {}
+		initial: ContextTaxInitial,
+		private readonly keybindings: KeybindingsManager,
+	) { this.tab = initial.tab; this.scope = initial.scope; }
 
-	invalidate(): void {}
+	invalidate(): void {
+		this.session?.invalidate();
+		if (this.view.kind !== "context") this.view.reader.invalidate();
+		if (this.view.kind === "details" && this.view.back.kind === "source") this.view.back.reader.invalidate();
+	}
+
+	private sessionView(): ReturnType<typeof createSessionView> {
+		if (this.session === undefined) this.session = createSessionView(this.callbacks.onSummary(this.scope), this.scope, this.theme);
+		return this.session;
+	}
 
 	private ledger(): Ledger {
 		if (this.cached !== undefined) return this.cached;
@@ -77,8 +101,13 @@ class ContextTax implements Component {
 	}
 
 	private refresh(): void {
+		if (this.tab === "session") {
+			this.session = undefined;
+			return;
+		}
 		const selected = this.visibleRows()[this.selected];
 		this.snapshot = this.callbacks.onRefresh();
+		this.session = undefined;
 		this.cached = undefined;
 		this.children.clear();
 		const key = selected?.row.key.startsWith("chunk:") ? selected.parent : selected?.row.key;
@@ -132,20 +161,30 @@ class ContextTax implements Component {
 
 	handleInput(data: string): void {
 		if (data === "q") { this.callbacks.onClose(); return; }
-		if (matchesKey(data, Key.escape)) {
-			if (!this.back()) this.callbacks.onClose();
+		if (matchesKey(data, Key.tab) || matchesKey(data, Key.shift("tab"))) {
+			this.tab = this.tab === "context" ? "session" : "context";
+		} else if (this.keybindings.matches(data, "tui.select.cancel")) {
+			if (this.tab === "session" || !this.back()) this.callbacks.onClose();
 		} else if (data === "r") this.refresh();
-		else if (data === "d") {
+		else if (this.tab === "session" && data === "b") {
+			this.scope = this.scope === "session" ? "branch" : "session";
+			this.session = undefined;
+		} else if (this.tab === "session") {
+			const page = Math.max(1, this.terminalRows() - 6);
+			const delta = this.keybindings.matches(data, "tui.select.up") ? -1 : this.keybindings.matches(data, "tui.select.down") ? 1
+				: this.keybindings.matches(data, "tui.select.pageUp") ? -page : this.keybindings.matches(data, "tui.select.pageDown") ? page : 0;
+			this.sessionView().move(delta, matchesKey(data, Key.home) ? "start" : matchesKey(data, Key.end) ? "end" : undefined);
+		} else if (data === "d") {
 			this.view = this.view.kind === "details" ? this.view.back
 				: { kind: "details", reader: createSourceReader(sessionDocument(this.snapshot), this.theme), back: this.view };
 		} else if (matchesKey(data, Key.left) || matchesKey(data, Key.backspace)) this.back();
-		else if (this.view.kind === "context" && (matchesKey(data, Key.enter) || matchesKey(data, Key.right) || data === " ")) this.open();
+		else if (this.view.kind === "context" && (this.keybindings.matches(data, "tui.select.confirm") || matchesKey(data, Key.right) || data === " ")) this.open();
 		else {
 			const page = Math.max(1, this.terminalRows() - 8);
-			const delta = matchesKey(data, Key.up) ? -1
-				: matchesKey(data, Key.down) ? 1
-					: matchesKey(data, Key.pageUp) ? -page
-						: matchesKey(data, Key.pageDown) ? page : 0;
+			const delta = this.keybindings.matches(data, "tui.select.up") ? -1
+				: this.keybindings.matches(data, "tui.select.down") ? 1
+					: this.keybindings.matches(data, "tui.select.pageUp") ? -page
+						: this.keybindings.matches(data, "tui.select.pageDown") ? page : 0;
 			if (this.view.kind === "context") {
 				const last = Math.max(0, this.visibleRows().length - 1);
 				this.selected = matchesKey(data, Key.home) ? 0 : matchesKey(data, Key.end) ? last : Math.max(0, Math.min(last, this.selected + delta));
@@ -156,10 +195,25 @@ class ContextTax implements Component {
 		this.callbacks.onChange();
 	}
 
+	private keyName(action: Keybinding): string | undefined {
+		const key = this.keybindings.getKeys(action)[0];
+		return key?.split("+").map((part) => part === "up" ? "↑" : part === "down" ? "↓" : part === "escape" ? "Esc"
+			: part === "enter" ? "Enter" : part === "ctrl" ? "Ctrl" : part === "alt" ? "Alt" : part === "shift" ? "Shift" : part).join("+");
+	}
+
 	private help(width: number): string {
-		const options = this.view.kind === "context"
-			? ["↑↓ move · Enter open · Esc back · r refresh · d details · q close", "↑↓ · Enter open · Esc back · r · d details · q close", "↑↓ · Enter · Esc · r · d · q", "↑↓ Enter Esc q", "q close"]
-			: ["↑↓ scroll · Esc back · d details · q close", "↑↓ scroll · Esc back · q close", "↑↓ · Esc · q", "q close"];
+		const up = this.keyName("tui.select.up");
+		const down = this.keyName("tui.select.down");
+		const move = up === "↑" && down === "↓" ? "↑↓" : [up, down].filter((key) => key !== undefined).join("/") || "Home/End";
+		const open = this.keyName("tui.select.confirm") ?? "→";
+		const cancel = this.keyName("tui.select.cancel");
+		const back = cancel ?? "←";
+		const close = cancel ?? "q";
+		const options = this.tab === "session"
+			? [`${move} scroll · b branch/all · r refresh · ${close} close`, `${move} · b branch/all · r · ${close} close`, `${move} · b scope · ${close}`, `b · ${close}`, "q"]
+			: this.view.kind === "context"
+				? [`${move} move · ${open} open · ${back} back · r refresh · d details · q close`, `${move} · ${open} open · ${back} back · r · d details · q close`, `${move} · ${open} · ${back} · r · d · q`, `${move} ${open} ${back} q`, "q close"]
+				: [`${move} scroll · ${back} back · d details · q close`, `${move} scroll · ${back} back · q close`, `${move} · ${back} · q`, "q close"];
 		return this.theme.fg("muted", options.find((option) => visibleWidth(option) <= width) ?? "q");
 	}
 
@@ -173,7 +227,8 @@ class ContextTax implements Component {
 			width,
 		);
 		const fullHeader = height >= 18 ? [...overview, "", tax, ""]
-			: height >= 10 ? [overview[0] ?? "", overview[2] ?? "", overview[3] ?? "", tax, ""]
+			: height >= 12 ? [...overview, tax, ""]
+				: height >= 10 ? [overview[0] ?? "", overview[2] ?? "", overview[3] ?? "", tax, ""]
 				: [overview[0] ?? "", tax];
 		const header = fullHeader.slice(0, Math.max(0, height - 2));
 		const rows = this.visibleRows();
@@ -204,8 +259,16 @@ class ContextTax implements Component {
 		const height = Math.max(1, Math.floor(this.terminalRows()));
 		const inset = cols >= 48 ? "  " : "";
 		const inner = Math.max(1, Math.min(cols - inset.length * 2, 100));
-		const lines = this.view.kind === "context" ? this.renderContext(inner, height) : this.view.reader.render(inner, height, this.help(inner >= 48 ? inner - 18 : inner));
-		return lines.slice(0, height).map((text) => {
+		const context = this.tab === "context" ? this.theme.fg("accent", this.theme.bold("Context")) : this.theme.fg("muted", "Context");
+		const session = this.tab === "session" ? this.theme.fg("accent", this.theme.bold("Session")) : this.theme.fg("muted", "Session");
+		const tabs = inner >= 20 ? `${context}  ${session}` : this.theme.fg("accent", this.theme.bold(this.tab === "context" ? "Context" : "Session"));
+		const navigation = valueLine(tabs, this.theme.fg("muted", inner >= 32 ? "Tab switch view" : "Tab"), inner);
+		const header = height >= 8 ? [navigation, ""] : height >= 2 ? [navigation] : [];
+		const bodyHeight = Math.max(1, height - header.length);
+		const help = this.help(inner >= 48 || (this.tab === "session" && inner >= 40) ? inner - 18 : inner);
+		const body = this.tab === "session" ? this.sessionView().render(inner, bodyHeight, help)
+			: this.view.kind === "context" ? this.renderContext(inner, bodyHeight) : this.view.reader.render(inner, bodyHeight, help);
+		return [...header, ...body].slice(0, height).map((text) => {
 			const line = inset + truncateToWidth(text, inner, "");
 			return line + " ".repeat(Math.max(0, cols - visibleWidth(line)));
 		});

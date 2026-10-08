@@ -1,9 +1,12 @@
 {
   "compilerOptions": {
-    "target": "ES2022",
+    "target": "ES2024",
     "module": "Preserve",
     "moduleResolution": "Bundler",
     "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noEmit": true,
@@ -12,7 +15,6 @@
   },
   "include": [
     "extensions/**/*.ts",
-    "src/**/*.ts",
-    "design/**/*.ts"
+    "src/**/*.ts"
   ]
 }

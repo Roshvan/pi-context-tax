@@ -8,18 +8,15 @@ import {
 	type ExtensionCommandContext,
 	type SessionEntry,
 } from "@earendil-works/pi-coding-agent";
-import { createHash } from "node:crypto";
 
 import { CaptureState } from "../src/capture.ts";
+import { parseContextCommand } from "../src/ctx-command.ts";
 import { resolveContextWindow } from "../src/context-window.ts";
 import { createContextTax } from "../src/context-tax.ts";
 import {
 	buildSnapshot,
 	readObservedUsage,
-	summarizeActiveTools,
-	toolSchemaText,
 	type SnapshotInputs,
-	type ToolSummary,
 } from "../src/snapshot.ts";
 import {
 	readLoadedSkills,
@@ -34,17 +31,18 @@ import {
 	type StartupUsageData,
 } from "../src/resources.ts";
 import { renderPlainReport } from "../src/report.ts";
+import { formatSessionSummary, summarizeSession, type SummaryScope } from "../src/session-summary.ts";
+import { startupKey, summarizeActiveTools, summarizeDeclaredTools } from "../src/tool-loadout.ts";
 import type { ContextSnapshot } from "../src/types.ts";
 
-function startupKey(systemPrompt: string, tools: ToolSummary[]): string {
-	return createHash("sha256").update(JSON.stringify([systemPrompt, tools.map(toolSchemaText).sort()])).digest("hex");
+function report(ctx: ExtensionCommandContext, text: string, level: "info" | "warning" = "info"): void {
+	if (ctx.hasUI) ctx.ui.notify(text, level);
+	else console.error(text);
 }
 
 export default function contextTaxExtension(pi: ExtensionAPI): void {
 	const capture = new CaptureState();
 	const pendingReadPaths = new Map<string, string>();
-
-	const activeTools = (cwd: string): ToolSummary[] => summarizeActiveTools(pi.getAllTools(), pi.getActiveTools(), cwd);
 
 	pi.on("before_agent_start", (event, ctx) => {
 		capture.noteAgentStart(event.systemPromptOptions, event.systemPrompt);
@@ -52,14 +50,17 @@ export default function contextTaxExtension(pi: ExtensionAPI): void {
 		if (skill !== undefined) noteLoadedSkill(skill, ctx.sessionManager.getBranch());
 	});
 
-	pi.on("context", (event, ctx) => {
+	pi.on("context_with_system", (event, ctx) => {
 		const systemPrompt = ctx.getSystemPrompt();
-		const tools = activeTools(ctx.cwd);
+		const tools = pi.getAllTools();
+		const hidden = capture.systemPromptOptions?.hiddenTools ?? [];
+		const activeNames = pi.getActiveTools();
 		capture.noteContext(
 			event.messages,
 			systemPrompt,
 			buildSessionContext(ctx.sessionManager.getBranch()).messages,
-			startupKey(systemPrompt, tools),
+			startupKey({ systemPrompt, tools, activeNames, hiddenNames: hidden, codemode: pi.getSettings().codemode }),
+			summarizeDeclaredTools(event.messages, tools, ctx.cwd, hidden),
 		);
 	});
 
@@ -103,42 +104,40 @@ export default function contextTaxExtension(pi: ExtensionAPI): void {
 		const readPath = pendingReadPaths.get(event.toolCallId);
 		pendingReadPaths.delete(event.toolCallId);
 		if (event.isError || readPath === undefined) return;
-		const match = skillForReadPath(readPath, ctx.cwd, capture.current?.systemPromptOptions?.skills);
+		const match = skillForReadPath(readPath, ctx.cwd, capture.systemPromptOptions?.skills);
 		if (match === undefined) return;
 		noteLoadedSkill(match, ctx.sessionManager.getBranch());
 	});
 
-	pi.on("session_compact", () => {
-		capture.invalidate();
-		pendingReadPaths.clear();
-	});
-
-	pi.on("session_start", () => {
-		capture.invalidate();
-		pendingReadPaths.clear();
-	});
-
-	pi.on("session_tree", () => {
-		capture.invalidate();
-		pendingReadPaths.clear();
-	});
+	const reset = (): void => { capture.invalidate(); pendingReadPaths.clear(); };
+	pi.on("session_compact", reset);
+	pi.on("session_start", reset);
+	pi.on("session_tree", reset);
+	pi.on("session_shutdown", reset);
+	pi.on("agent_end", () => { pendingReadPaths.clear(); });
 
 	const takeSnapshot = (ctx: ExtensionCommandContext): ContextSnapshot => {
-		const settings = SettingsManager.create(ctx.cwd, undefined, { projectTrusted: ctx.isProjectTrusted() });
-		const compaction = settings.getCompactionSettings();
+		const compaction = SettingsManager.inMemory(pi.getSettings()).getCompactionSettings(ctx.model);
 		const usage = ctx.getContextUsage();
 		const branch = ctx.sessionManager.getBranch();
 		const systemPrompt = ctx.getSystemPrompt();
 		const systemPromptOptions = ctx.getSystemPromptOptions();
-		const tools = activeTools(ctx.cwd);
+		const configured = pi.getAllTools();
+		const hidden = systemPromptOptions.hiddenTools ?? [];
+		const activeNames = pi.getActiveTools();
+		const registered = summarizeActiveTools(configured, activeNames, ctx.cwd, hidden);
+		const key = startupKey({ systemPrompt, tools: configured, activeNames, hiddenNames: hidden, codemode: pi.getSettings().codemode });
 		const loadedSkills = readLoadedSkills(branch);
 		const currentMessages = buildSessionContext(branch).messages;
 		const history = capture.resolveMessages(currentMessages);
+		const tools = capture.current?.startupKey === key ? capture.current.tools
+			: readStartupUsageKey(branch) === key ? summarizeDeclaredTools(currentMessages, configured, ctx.cwd, hidden)
+				: registered;
 		const model = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "no model";
 		const observed = readObservedUsage(history.messages, {
 			tokens: usage?.tokens ?? null,
 			model,
-			startupChanged: readStartupUsageKey(branch) !== startupKey(systemPrompt, tools),
+			startupChanged: readStartupUsageKey(branch) !== key,
 		});
 		const inputs: SnapshotInputs = {
 			systemPrompt,
@@ -167,17 +166,35 @@ export default function contextTaxExtension(pi: ExtensionAPI): void {
 	};
 
 	pi.registerCommand("ctx", {
-		description: "Show what's in the context window, and how much of it is startup tax",
-		handler: async (_args, ctx) => {
+		description: "Inspect current context and recorded session usage, cost, tools, and MCP activity (no model call)",
+		getArgumentCompletions: (prefix) => {
+			const values = ["context", "session", "session branch", "session json", "session branch json"].filter((value) => value.startsWith(prefix));
+			return values.length > 0 ? values.map((value) => ({ value, label: value })) : null;
+		},
+		handler: async (args, ctx) => {
+			const parsed = parseContextCommand(args);
+			if (parsed._tag === "err") {
+				report(ctx, parsed.error.message, "warning");
+				return;
+			}
+			const command = parsed.value;
+			const takeSummary = (scope: SummaryScope) => summarizeSession(
+				scope === "branch" ? ctx.sessionManager.getBranch() : ctx.sessionManager.getEntries(),
+				pi.getAllTools(),
+			);
+			if (command.view === "session" && (command.format === "json" || ctx.mode !== "tui")) {
+				const summary = takeSummary(command.scope);
+				const output = command.format === "json" ? JSON.stringify({ scope: command.scope, ...summary }, null, 2) : formatSessionSummary(summary, command.scope);
+				report(ctx, output);
+				return;
+			}
 			const snapshot = takeSnapshot(ctx);
 			if (ctx.mode !== "tui") {
-				const report = renderPlainReport(snapshot);
-				if (ctx.hasUI) ctx.ui.notify(report, "info");
-				else console.error(report);
+				report(ctx, renderPlainReport(snapshot) + "\n\n/ctx session · recorded usage, cost, tools, and MCP calls");
 				return;
 			}
 
-			await ctx.ui.custom<void>((tui, theme, _keybindings, done) => {
+			await ctx.ui.custom<void>((tui, theme, keybindings, done) => {
 				let closed = false;
 				const close = () => {
 					if (closed) return;
@@ -191,8 +208,11 @@ export default function contextTaxExtension(pi: ExtensionAPI): void {
 					{
 						onClose: close,
 						onRefresh: () => takeSnapshot(ctx),
+						onSummary: takeSummary,
 						onChange: () => tui.requestRender(),
 					},
+					{ tab: command.view, scope: command.view === "session" ? command.scope : "session" },
+					keybindings,
 				);
 			}, {
 				overlay: true,

@@ -1,5 +1,5 @@
-import { highlightCode, type Theme } from "@earendil-works/pi-coding-agent";
-import { Markdown, wrapTextWithAnsi, type MarkdownTheme } from "@earendil-works/pi-tui";
+import { getMarkdownTheme, highlightCode, type Theme } from "@earendil-works/pi-coding-agent";
+import { Markdown, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { valueLine } from "./panel.ts";
 import type { SourceBlock, SourceDocument } from "./source-document.ts";
 import { terminalText } from "./terminal-text.ts";
@@ -20,30 +20,10 @@ function anchoredLines(lines: string[], anchor: string): ReaderLine[] {
 	});
 }
 
-function markdownTheme(theme: Theme): MarkdownTheme {
-	return {
-		heading: (text) => theme.fg("mdHeading", text),
-		link: (text) => theme.fg("mdLink", text),
-		linkUrl: (text) => theme.fg("mdLinkUrl", text),
-		code: (text) => theme.fg("mdCode", text),
-		codeBlock: (text) => theme.fg("mdCodeBlock", text),
-		codeBlockBorder: (text) => theme.fg("mdCodeBlockBorder", text),
-		quote: (text) => theme.fg("mdQuote", text),
-		quoteBorder: (text) => theme.fg("mdQuoteBorder", text),
-		hr: (text) => theme.fg("mdHr", text),
-		listBullet: (text) => theme.fg("mdListBullet", text),
-		bold: (text) => theme.bold(text),
-		italic: (text) => theme.italic(text),
-		strikethrough: (text) => theme.strikethrough(text),
-		underline: (text) => theme.underline(text),
-		highlightCode,
-	};
-}
-
 function blockLines(block: SourceBlock, width: number, theme: Theme, index: number): ReaderLine[] {
 	const text = terminalText(block.text).replace(/\t/g, "  ");
 	if (block.kind === "markdown") {
-		return anchoredLines(new Markdown(text, 0, 0, markdownTheme(theme), { color: (value) => theme.fg("text", value) }, { renderLatex: false }).render(width), `${index}:prose`);
+		return anchoredLines(new Markdown(text, 0, 0, getMarkdownTheme(), { color: (value) => theme.fg("text", value) }, { renderLatex: false }).render(width), `${index}:prose`);
 	}
 	const source = block.kind === "code" ? highlightCode(text, block.language) : text.split("\n");
 	return source.flatMap((line, lineIndex) => {
@@ -63,6 +43,8 @@ class SourceReader {
 	private lines: ReaderLine[] = [];
 
 	constructor(private readonly document: SourceDocument, private readonly theme: Theme) {}
+
+	invalidate(): void { this.width = 0; }
 
 	move(delta: number, edge?: "start" | "end"): void {
 		this.offset = edge === "start" ? 0 : edge === "end" ? Number.MAX_SAFE_INTEGER : Math.max(0, this.offset + delta);
