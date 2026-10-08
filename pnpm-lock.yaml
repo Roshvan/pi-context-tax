@@ -10,6 +10,7 @@ overrides:
   '@earendil-works/pi-ai': 1.0.4
   '@earendil-works/pi-codemode': 1.0.4
   '@earendil-works/pi-mcp': 1.0.4
+  '@earendil-works/pi-telemetry': 1.0.4
   '@earendil-works/pi-tui': 1.0.4
 
 importers:
@@ -179,8 +180,8 @@ packages:
     resolution: {integrity: sha512-I6SqOqrKED+XrjkkFIXY7Ze38QtXtjojPJlQsJ2v5soCPV4QI1bNxXDwQaqzZ2a+6pNN8meWrRw1qkSMbPy9QQ==}
     engines: {node: '>=22.19.0'}
 
-  '@earendil-works/pi-telemetry@1.1.0':
-    resolution: {integrity: sha512-8gAK05/2pPozZZz6hCLOi8x2vsqzvsmO9gG92kbvuvTPm0qMHaFlaXX98ndXsrOi5pmzha7vNLguuG4+0Rgxjw==}
+  '@earendil-works/pi-telemetry@1.0.4':
+    resolution: {integrity: sha512-DL2eXXtnL5/VQkuQd97fL57GXTG1/zKHtMmDsrv8tGeJ5EgYYTWvzy44dqbYL0lD0Z22v/NOwqU3PHO75HVrqA==}
     engines: {node: '>=22.19.0'}
 
   '@earendil-works/pi-tui@1.0.4':
@@ -1257,7 +1258,7 @@ snapshots:
     dependencies:
       '@anthropic-ai/sdk': 0.129.0
       '@aws-sdk/client-bedrock-runtime': 3.1127.0
-      '@earendil-works/pi-telemetry': 1.1.0
+      '@earendil-works/pi-telemetry': 1.0.4
       '@google/genai': 2.21.0
       '@smithy/node-http-handler': 4.12.1
       http-proxy-agent: 9.1.0
@@ -1323,7 +1324,7 @@ snapshots:
     dependencies:
       cross-spawn: 7.0.6
 
-  '@earendil-works/pi-telemetry@1.1.0': {}
+  '@earendil-works/pi-telemetry@1.0.4': {}
 
   '@earendil-works/pi-tui@1.0.4':
     dependencies:
