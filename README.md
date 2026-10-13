@@ -88,6 +88,12 @@ Source counts are estimates, marked `~`. The total uses compatible Pi-reported u
 
 A label such as `Built-in tools · pi-zen` means that extension re-registers Pi’s built-in tools with unchanged descriptions and schemas. Those definitions are counted once; they are not extra tools. An extension that changes a built-in definition is labeled `Built-in overrides` instead.
 
+## Compatibility
+
+Requires Pi 1.0.4 or newer; development and CI use Pi 1.2.0. On Pi 1.2.0, context capture handles both user prompts and extension-triggered custom-message runs. Only user prompts are checked for expanded skills.
+
+See [CHANGELOG.md](CHANGELOG.md) for release changes.
+
 ## Development
 
 You will need Node.js 22.19 or newer, pnpm, and Pi 1.0.4 or newer. Development and release checks use Pi 1.2.0. Clone the repository, install the dependencies, and start Pi with the local extension:
