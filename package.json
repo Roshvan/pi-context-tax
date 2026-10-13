@@ -1,6 +1,6 @@
 {
 	"name": "pi-context-tax",
-	"version": "0.2.0",
+	"version": "0.2.1",
 	"packageManager": "pnpm@11.24.0",
 	"description": "Inspect Pi's startup tax, current context, and recorded session tokens, cost, tools, and MCP calls",
 	"type": "module",
