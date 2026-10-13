@@ -35,7 +35,8 @@
 		"LICENSE"
 	],
 	"scripts": {
-		"check": "tsc --noEmit && oxlint",
+		"check": "tsc --noEmit && oxlint && pnpm test",
+		"test": "node --experimental-strip-types --test tests/*.test.ts",
 		"dev": "pi -e ./extensions/context-tax.ts",
 		"lint": "oxlint",
 		"pack:check": "pnpm pack --dry-run",
@@ -52,9 +53,9 @@
 		"@earendil-works/pi-tui": "*"
 	},
 	"devDependencies": {
-		"@earendil-works/pi-ai": "1.0.4",
-		"@earendil-works/pi-coding-agent": "1.0.4",
-		"@earendil-works/pi-tui": "1.0.4",
+		"@earendil-works/pi-ai": "1.2.0",
+		"@earendil-works/pi-coding-agent": "1.2.0",
+		"@earendil-works/pi-tui": "1.2.0",
 		"@oxlint/plugins": "^1.80.0",
 		"@types/node": "^22.20.1",
 		"oxlint": "^1.80.0",

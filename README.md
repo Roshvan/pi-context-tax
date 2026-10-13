@@ -90,7 +90,7 @@ A label such as `Built-in tools Â· pi-zen` means that extension re-registers Piâ
 
 ## Development
 
-You will need Node.js 22.19 or newer, pnpm, and Pi 1.0.4 or newer. Clone the repository, install the dependencies, and start Pi with the local extension:
+You will need Node.js 22.19 or newer, pnpm, and Pi 1.0.4 or newer. Development and release checks use Pi 1.2.0. Clone the repository, install the dependencies, and start Pi with the local extension:
 
 ```sh
 git clone https://github.com/Roshvan/pi-context-tax.git

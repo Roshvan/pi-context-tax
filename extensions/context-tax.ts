@@ -46,6 +46,8 @@ export default function contextTaxExtension(pi: ExtensionAPI): void {
 
 	pi.on("before_agent_start", (event, ctx) => {
 		capture.noteAgentStart(event.systemPromptOptions, event.systemPrompt);
+		// Custom-message runs have no prompt; checking the field also supports Pi before 1.2.
+		if (!("prompt" in event)) return;
 		const skill = skillForExpandedPrompt(event.prompt, event.systemPromptOptions?.skills);
 		if (skill !== undefined) noteLoadedSkill(skill, ctx.sessionManager.getBranch());
 	});
