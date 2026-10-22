@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.3
+
+- Repair trusted npm publishing and make release retries safe for versions already published from the same commit.
+- No changes to the extension's runtime behavior.
+
 ## 0.2.2
 
 Pi 1.2.0 compatibility release. Version 0.2.1 was tagged but not published to npm.
